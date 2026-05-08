@@ -1,16 +1,30 @@
-# AUTO VEO Studio v2.0 — Clean UX
+# AUTO VEO Studio v2.2 — Flow Quick Controls
 
-Bản v2.0 tập trung vào dùng hằng ngày thật mượt:
+Bản v2.1 tập trung vào workflow Flow trên điện thoại giống ảnh bạn gửi.
 
-- Tách code thật ra `src/`
-- Giao diện Simple / Advanced
-- Viral Director có chấm điểm idea
-- Flow Assisted Mode + Flow Inbox thông minh hơn
-- Upload nhiều clip, auto map `scene_01.mp4`
-- Báo thiếu scene
-- Chuẩn hóa tên file
-- Thumbnail template đẹp hơn
-- Build final video + voice + subtitle + thumbnail + publish package
+## Có gì mới
+
+- Cụm **Flow Quick Settings** trong Flow Assisted.
+- Image / Video.
+- Text / Frames / Ingredients.
+- 9:16 / 16:9.
+- 1x / 2x / 3x / 4x.
+- Veo 3.1 Lite / Fast / Quality / Lower Priority.
+- 4s / 6s / 8s.
+- Generate / Extend / Insert / Remove / Camera.
+- Ước tính credit/scene và tổng credit dự kiến.
+- Tự thêm suffix setting vào prompt từng scene.
+- Tải `flow_settings.json`.
+
+## Cách dùng
+
+1. Vào **Viral Director** tạo blueprint.
+2. Vào **Flow Assisted** chọn setting giống Google Flow.
+3. Copy prompt sang Flow.
+4. Chọn đúng model/tỉ lệ/thời lượng/số bản như trong app.
+5. Render bằng credit Flow.
+6. Upload clip về app hoặc bỏ vào `flow_inbox`.
+7. Build Final.
 
 ## Chạy local
 
@@ -27,28 +41,41 @@ chmod +x run_mac.command
 ./run_mac.command
 ```
 
-## Quy trình tốt nhất
 
-1. Vào **Viral Director**.
-2. Tạo blueprint viral.
-3. Bấm gửi prompt sang Flow Assisted.
-4. Copy prompt sang Google Flow.
-5. Render bằng credit Flow/Veo.
-6. Tải clip về, đặt tên `scene_01.mp4`, `scene_02.mp4`.
-7. Upload nhiều clip hoặc bỏ vào `flow_inbox`.
-8. Build Final.
+## v2.2 — Product Prompt Studio
 
-## Cấu trúc code
+Thêm tab **Product Prompt Studio**:
 
 ```text
-src/
-  project.py
-  viral.py
-  flow.py
-  media.py
-  tts.py
-  thumbnails.py
-app.py
+Upload ảnh sản phẩm
+→ tự tạo concept
+→ tự tạo kịch bản 8s
+→ chọn mood nhạc
+→ xuất 3 prompt Flow/Veo
+→ gửi prompt sang Flow Assisted
 ```
 
-Bản này cố ý lược bớt các tab API nặng để chạy mượt, dễ bảo trì và dễ dùng hơn.
+Có các rule cố định:
+
+- Dùng ảnh sản phẩm upload làm reference duy nhất.
+- Giữ nguyên hình dáng, màu sắc, chất liệu, tỷ lệ, silhouette.
+- Không tự vẽ lại, không biến tấu, không thay sản phẩm.
+- Xoá sạch chữ trên sản phẩm để tránh lỗi text.
+- Không text overlay.
+- Không subtitle.
+- Không chữ trong môi trường.
+- Không chữ chạy, không chữ dính vào vật thể/người mẫu.
+
+Mood nhạc:
+
+- Năng động
+- Hài hước
+- Truyền cảm hứng
+
+Output:
+
+- Concept tổng
+- Shot list 8s
+- Voiceover tiếng Việt
+- 3 prompt Flow/Veo
+- Product Prompt Package ZIP
