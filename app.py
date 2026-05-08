@@ -1,6 +1,11 @@
 from __future__ import annotations
-import json
+import re
 from pathlib import Path
+
+def safe_filename(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_.-]+", "_", name or "uploaded_file")
+
+import json
 import streamlit as st
 from src.project import project_dir, list_projects, export_zip, backup_project, storage_report, read_errors, log_error, now
 from src.viral import NICHES, FORMATS, make_blueprint, export_blueprint_zip
@@ -9,7 +14,7 @@ from src.media import concat_videos, make_srt, thumbnail_from_video, mix_audio_s
 from src.tts import VOICE_PRESETS, tts_edge
 from src.thumbnails import TEMPLATES, make_thumbnail
 from src.product_prompt import PRODUCT_MOODS, PRODUCT_TYPES, build_product_prompts, export_product_prompt_package
-APP_VERSION='2.4.0 Product Inside Viral Director'
+APP_VERSION='2.5.0 Fix Product Upload'
 FLOW_URL='https://labs.google/fx/tools/flow'
 FLOW_MODEL_CREDITS={'Veo 3.1 - Lite':8,'Veo 3.1 - Fast':10,'Veo 3.1 - Quality':15,'Veo 3.1 - Lite [Lower Priority]':6,'Veo 3.1 - Fast [Lower Priority]':8}
 def estimate_flow_credits(settings):
@@ -40,7 +45,7 @@ with st.sidebar:
     st.divider(); st.markdown('### ⚙️ Runtime'); st.caption(f"FFmpeg: {'OK' if ffmpeg_path() else 'Chưa thấy'}")
     if not ffmpeg_path(): st.warning('Cần FFmpeg để nối video/ghép subtitle/audio.'); st.code('Windows: winget install Gyan.FFmpeg\nMac: brew install ffmpeg')
     st.divider(); default_thumb_template=st.selectbox('Template thumbnail',list(TEMPLATES.keys()),index=0)
-st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v2.4 — Product Inside Viral Director</h1><p>Viral Director + Product Upload · Concept · Script 8s · 3 Flow Prompts · Flow Assisted</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
+st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v2.5 — Fix Product Upload</h1><p>Viral Director + Product Upload · Concept · Script 8s · 3 Flow Prompts · Flow Assisted</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
 SIMPLE_TABS=['🎯 Viral Director','🌊 Flow Assisted','🏠 Project','📊 Dashboard']; ADVANCED_TABS=SIMPLE_TABS+['🖼️ Thumbnail Lab','🧾 Logs','🚀 Deploy']; names=SIMPLE_TABS if ui_mode=='Simple' else ADVANCED_TABS; tabs=st.tabs(names)
 def tab(name): return tabs[names.index(name)]
 def has_tab(name): return name in names
@@ -72,7 +77,7 @@ with tab('🎯 Viral Director'):
     if viral_product_upload:
         product_ref_dir = pdir / 'product_refs'
         product_ref_dir.mkdir(parents=True, exist_ok=True)
-        safe_product_file = re.sub(r'[^a-zA-Z0-9_.-]+', '_', viral_product_upload.name)
+        safe_product_file = safe_filename(viral_product_upload.name)
         viral_product_image_path = product_ref_dir / safe_product_file
         viral_product_upload.seek(0)
         viral_product_image_path.write_bytes(viral_product_upload.read())
@@ -233,4 +238,4 @@ if has_tab('🧾 Logs'):
 if has_tab('🚀 Deploy'):
     with tab('🚀 Deploy'):
         st.markdown('## 🚀 Deploy checklist'); st.json({'app.py':Path('app.py').exists(),'requirements.txt':Path('requirements.txt').exists(),'packages.txt':Path('packages.txt').exists(),'.streamlit/config.toml':Path('.streamlit/config.toml').exists(),'.gitignore':Path('.gitignore').exists()}); st.code('git init\ngit add .\ngit commit -m "AUTO VEO Studio v2.1"\ngit branch -M main\ngit remote add origin https://github.com/YOUR_USERNAME/auto-veo-studio.git\ngit push -u origin main',language='bash')
-st.caption('v2.4 Product Inside Viral Director: thêm setting giống Google Flow mobile để copy prompt và chọn model/tỉ lệ/thời lượng/credit nhanh hơn.')
+st.caption('v2.5 Fix Product Upload: thêm setting giống Google Flow mobile để copy prompt và chọn model/tỉ lệ/thời lượng/credit nhanh hơn.')

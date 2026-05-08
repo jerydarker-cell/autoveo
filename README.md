@@ -1,4 +1,4 @@
-# AUTO VEO Studio v2.4 — Flow Quick Controls
+# AUTO VEO Studio v2.5 — Flow Quick Controls
 
 Bản v2.1 tập trung vào workflow Flow trên điện thoại giống ảnh bạn gửi.
 
@@ -131,3 +131,23 @@ Viral Director
 → Upload clip về app
 → Build Final
 ```
+
+
+## v2.5 — Fix Product Upload
+
+Sửa lỗi:
+
+```text
+NameError: name 're' is not defined
+```
+
+Nguyên nhân: khu Upload ảnh sản phẩm dùng `re.sub()` để làm sạch tên file nhưng thiếu `import re`.
+
+Bản v2.5 đã thêm:
+
+- `import re`
+- `safe_filename()`
+- thay các đoạn xử lý tên file upload sang helper an toàn hơn
+- kiểm tra compile lại toàn bộ app và modules
+
+Luồng Product Upload trong Viral Director giữ nguyên.
