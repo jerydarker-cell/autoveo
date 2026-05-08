@@ -458,6 +458,77 @@ def blended_style_palette(primary_style: str, secondary_style: str | None = None
             styles.append(s)
     return " + ".join(style_palette_text(s) for s in styles)
 
+
+def prompt_bank_dir(pdir: Path) -> Path:
+    folder = pdir / "prompt_bank"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+def save_prompt_bank_text(pdir: Path, name: str, content: str, source: str = "manual") -> str:
+    folder = prompt_bank_dir(pdir)
+    safe = safe_filename(name or f"{source}_prompt.txt")
+    if not safe.lower().endswith(".txt"):
+        safe += ".txt"
+    path = folder / safe
+    path.write_text(content or "", encoding="utf-8")
+    return str(path)
+
+def list_prompt_bank_files(pdir: Path) -> list[Path]:
+    folder = prompt_bank_dir(pdir)
+    return sorted([p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in {".txt", ".md", ".json"}])
+
+def read_prompt_bank_summary(pdir: Path, max_chars: int = 5000) -> str:
+    files = list_prompt_bank_files(pdir)
+    if not files:
+        return "No prompt bank files saved yet."
+    parts = []
+    each = max(600, max_chars // max(1, min(len(files), 8)))
+    for fp in files[:8]:
+        try:
+            txt = fp.read_text(encoding="utf-8", errors="ignore")[:each]
+            parts.append(f"FILE: {fp.name}\n{txt}")
+        except Exception:
+            pass
+    return "\n\n---\n\n".join(parts)[:max_chars]
+
+def build_prompt_sync_context(pdir: Path) -> str:
+    return (
+        "PROMPT SYNC CONTEXT:\n"
+        "Use the user's local prompt bank and style memory as guidance.\n\n"
+        "Style memory:\n"
+        + json.dumps(load_style_memory(pdir), ensure_ascii=False, indent=2)[:2500]
+        + "\n\nPrompt bank:\n"
+        + read_prompt_bank_summary(pdir, 5000)
+        + "\n\nStyle references:\n"
+        + style_reference_summary(pdir)
+    )
+
+def call_gemini_prompt_sync(user_task: str, context: str, api_key: str = "") -> tuple[bool, str]:
+    """Optional Gemini API call using official API key. No cookies/browser automation."""
+    api_key = (api_key or "").strip()
+    if not api_key:
+        return False, "Chưa có GEMINI_API_KEY. Hãy dán API key vào sidebar hoặc dùng Prompt Bank local."
+    try:
+        import urllib.request
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": context + "\n\nTASK:\n" + user_task + "\n\nReturn concise Vietnamese output with reusable Flow/Veo prompt blocks."
+                }]
+            }]
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            raw = json.loads(resp.read().decode("utf-8"))
+        parts = raw.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        txt = "\n".join(p.get("text", "") for p in parts).strip()
+        return True, txt or "Gemini không trả về nội dung."
+    except Exception as e:
+        return False, str(e)
+
+
 def series_prompt_pack(series_name: str, primary_style: str, secondary_style: str | None, tertiary_style: str | None, product_context: str = "") -> dict:
     label = blended_style_label(primary_style, secondary_style, tertiary_style)
     desc = blended_style_description(primary_style, secondary_style, tertiary_style)
@@ -537,14 +608,15 @@ Output should look like a polished viral thumbnail ready for TikTok/Reels/Shorts
 
 import json
 import streamlit as st
+import streamlit.components.v1 as components
 from src.project import project_dir, list_projects, export_zip, backup_project, storage_report, read_errors, log_error, now
 from src.viral import NICHES, FORMATS, make_blueprint, export_blueprint_zip
 from src.flow import inbox_dir, scan_inbox, save_uploads, merge_clips, missing_scenes, normalize_names, write_prompt_txt
-from src.media import concat_videos, make_srt, thumbnail_from_video, mix_audio_subtitles, publish_package, ffmpeg_path
+from src.media import concat_videos, concat_videos_studio, make_srt, thumbnail_from_video, mix_audio_subtitles, publish_package, ffmpeg_path
 from src.tts import VOICE_PRESETS, tts_edge
 from src.thumbnails import TEMPLATES, make_thumbnail
 from src.product_prompt import PRODUCT_MOODS, PRODUCT_TYPES, build_product_prompts, export_product_prompt_package
-APP_VERSION='3.2.0 Smart Style AI + 3-Way Blend'
+APP_VERSION='3.5.1 Final Checked Stable'
 FLOW_URL='https://labs.google/fx/tools/flow'
 FLOW_MODEL_CREDITS={'Veo 3.1 - Lite':8,'Veo 3.1 - Fast':10,'Veo 3.1 - Quality':15,'Veo 3.1 - Lite [Lower Priority]':6,'Veo 3.1 - Fast [Lower Priority]':8}
 def estimate_flow_credits(settings):
@@ -569,7 +641,198 @@ def flow_settings_suffix(settings):
     return ' '.join(parts)
 st.set_page_config(page_title='AUTO VEO Studio v3.2',page_icon='🎬',layout='wide')
 st.markdown('''<style>.block-container{padding-top:.85rem;max-width:1320px}.hero{padding:22px 26px;border-radius:26px;background:linear-gradient(135deg,rgba(90,80,255,.18),rgba(255,255,255,.035));border:1px solid rgba(255,255,255,.14);margin-bottom:18px}.hero h1{margin:0;font-size:2rem}.badge{display:inline-block;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);margin:5px 6px 0 0;font-size:.86rem}</style>''',unsafe_allow_html=True)
-for k,v in {'viral_blueprint':None,'flow_rows':[],'flow_clips':[],'flow_quick_settings':{},'viral_product_prompt_data':None}.items():
+
+VIDEO_STATUS_META = {
+    'Chưa làm': {'class': 'gray', 'label': '⚪ Chưa làm'},
+    'Sẵn sàng copy': {'class': 'blue', 'label': '🔵 Sẵn sàng copy'},
+    'Đang render': {'class': 'yellow', 'label': '🟡 Đang render'},
+    'Đã có video': {'class': 'teal', 'label': '🟢 Đã có video'},
+    'Lỗi': {'class': 'red', 'label': '🔴 Lỗi'},
+    'Hoàn tất': {'class': 'green', 'label': '✅ Hoàn tất'},
+}
+
+def default_video_grid_rows(count: int = 10) -> list[dict]:
+    return [{
+        'scene': i,
+        'title': f'Cảnh {i}',
+        'status': 'Chưa làm',
+        'done': False,
+        'narration': '',
+        'prompt': '',
+        'note': '',
+        'video_path': ''
+    } for i in range(1, count + 1)]
+
+def normalize_video_grid_rows(rows: list[dict] | None, count: int = 10) -> list[dict]:
+    rows = rows or []
+    by_scene = {}
+    for r in rows:
+        try:
+            sc = int(r.get('scene') or 0)
+        except Exception:
+            sc = 0
+        if sc > 0:
+            by_scene[sc] = {
+                'scene': sc,
+                'title': r.get('title', f'Cảnh {sc}') or f'Cảnh {sc}',
+                'status': r.get('status', 'Chưa làm') or 'Chưa làm',
+                'done': bool(r.get('done', False)),
+                'narration': r.get('narration', '') or '',
+                'prompt': r.get('prompt', '') or '',
+                'note': r.get('note', '') or '',
+                'video_path': r.get('video_path', '') or '',
+            }
+    out = []
+    for i in range(1, count + 1):
+        out.append(by_scene.get(i, {
+            'scene': i,
+            'title': f'Cảnh {i}',
+            'status': 'Chưa làm',
+            'done': False,
+            'narration': '',
+            'prompt': '',
+            'note': '',
+            'video_path': '',
+        }))
+    return out
+
+def video_grid_from_flow_rows(flow_rows: list[dict] | None, count: int = 10) -> list[dict]:
+    flow_rows = flow_rows or []
+    out = default_video_grid_rows(count)
+    for i, r in enumerate(flow_rows[:count], start=1):
+        out[i-1].update({
+            'scene': i,
+            'title': f'Cảnh {i}',
+            'status': 'Sẵn sàng copy' if (r.get('prompt') or '').strip() else 'Chưa làm',
+            'done': False,
+            'narration': r.get('narration', '') or '',
+            'prompt': r.get('prompt', '') or '',
+            'note': r.get('note', '') or '',
+        })
+    return out
+
+def flow_rows_from_video_grid(rows: list[dict]) -> list[dict]:
+    rows = normalize_video_grid_rows(rows, len(rows) if rows else 10)
+    out = []
+    status_map = {
+        'Chưa làm': 'Chưa làm',
+        'Sẵn sàng copy': 'Đã copy prompt',
+        'Đang render': 'Đang render Flow',
+        'Đã có video': 'Đã tải video',
+        'Lỗi': 'Lỗi cần làm lại',
+        'Hoàn tất': 'Hoàn tất',
+    }
+    for r in rows:
+        out.append({
+            'scene': r['scene'],
+            'status': status_map.get(r.get('status'), 'Chưa làm'),
+            'narration': r.get('narration', ''),
+            'prompt': r.get('prompt', ''),
+            'note': r.get('note', ''),
+        })
+    return out
+
+def video_grid_summary(rows: list[dict]) -> dict:
+    rows = normalize_video_grid_rows(rows, len(rows) if rows else 10)
+    done = sum(1 for r in rows if r.get('done'))
+    prompts = sum(1 for r in rows if (r.get('prompt') or '').strip())
+    videos = sum(1 for r in rows if (r.get('video_path') or '').strip())
+    completed = sum(1 for r in rows if r.get('status') == 'Hoàn tất')
+    errors = sum(1 for r in rows if r.get('status') == 'Lỗi')
+    return {'done': done, 'prompts': prompts, 'videos': videos, 'completed': completed, 'errors': errors, 'total': len(rows)}
+
+def video_status_chip(status: str, done: bool = False) -> str:
+    meta = VIDEO_STATUS_META.get(status, VIDEO_STATUS_META['Chưa làm'])
+    text = '✅ ' + meta['label'] if done and status != 'Hoàn tất' else meta['label']
+    return f"<span class='video-chip {meta['class']}'>{text}</span>"
+
+def video_grid_progress_ratio(rows: list[dict]) -> float:
+    rows = normalize_video_grid_rows(rows, len(rows) if rows else 10)
+    if not rows:
+        return 0.0
+    score = 0
+    for r in rows:
+        status = r.get('status')
+        if r.get('done') or status == 'Hoàn tất':
+            score += 100
+        elif status == 'Đã có video':
+            score += 75
+        elif status == 'Đang render':
+            score += 45
+        elif status == 'Sẵn sàng copy':
+            score += 25
+        elif (r.get('prompt') or '').strip():
+            score += 20
+    return min(1.0, max(0.0, score / (len(rows) * 100)))
+
+def filter_video_grid_rows(rows: list[dict], filter_name: str) -> list[dict]:
+    rows = normalize_video_grid_rows(rows, len(rows) if rows else 10)
+    if filter_name == 'Tất cả':
+        return rows
+    if filter_name == 'Chỉ ô lỗi':
+        return [r for r in rows if r.get('status') == 'Lỗi']
+    if filter_name == 'Chỉ ô chưa làm':
+        return [r for r in rows if r.get('status') == 'Chưa làm' or not (r.get('prompt') or '').strip()]
+    if filter_name == 'Chỉ ô hoàn tất':
+        return [r for r in rows if r.get('status') == 'Hoàn tất' or r.get('done')]
+    if filter_name == 'Chưa hoàn tất':
+        return [r for r in rows if not r.get('done') and r.get('status') != 'Hoàn tất']
+    if filter_name == 'Đã có video':
+        return [r for r in rows if r.get('status') == 'Đã có video' or (r.get('video_path') or '').strip()]
+    return rows
+
+def reorder_video_grid_rows(rows: list[dict], order_rows: list[dict]) -> list[dict]:
+    rows = normalize_video_grid_rows(rows, len(rows) if rows else 10)
+    by_scene = {int(r['scene']): r for r in rows}
+    ordered = []
+    for item in order_rows or []:
+        try:
+            scene = int(item.get('scene') or 0)
+            order = int(item.get('order') or 999)
+        except Exception:
+            continue
+        if scene in by_scene:
+            ordered.append((order, scene, by_scene[scene]))
+    ordered = [x[2] for x in sorted(ordered, key=lambda x: (x[0], x[1]))]
+    # Renumber visual scene order to 1..N while preserving title/prompt/video
+    out = []
+    for i, r in enumerate(ordered, start=1):
+        nr = dict(r)
+        nr['scene'] = i
+        if not nr.get('title') or nr.get('title', '').startswith('Cảnh '):
+            nr['title'] = f'Cảnh {i}'
+        out.append(nr)
+    return normalize_video_grid_rows(out, len(rows))
+
+def copy_prompt_component(prompt: str, key: str, height: int = 58):
+    safe_prompt = json.dumps(prompt or "", ensure_ascii=False)
+    components.html(f"""
+    <div style="display:flex;gap:8px;align-items:center;margin:4px 0 8px 0;">
+      <button id="copy_{key}" style="padding:8px 12px;border-radius:12px;border:0;background:#2563eb;color:white;font-weight:700;cursor:pointer;">📋 Copy Prompt</button>
+      <span id="msg_{key}" style="font-size:12px;opacity:.8;"></span>
+    </div>
+    <script>
+      const promptText_{key} = {safe_prompt};
+      const btn_{key} = document.getElementById("copy_{key}");
+      const msg_{key} = document.getElementById("msg_{key}");
+      btn_{key}.onclick = async () => {{
+        try {{
+          await navigator.clipboard.writeText(promptText_{key});
+          msg_{key}.innerText = "Đã copy";
+        }} catch(e) {{
+          msg_{key}.innerText = "Không copy tự động được, hãy copy trong ô Prompt.";
+        }}
+      }};
+    </script>
+    """, height=height)
+
+def flow_open_component(url: str, key: str, height: int = 54):
+    components.html(f"""
+    <a href="{url}" target="_blank" style="display:inline-block;padding:8px 12px;border-radius:12px;background:#111827;color:white;text-decoration:none;font-weight:700;margin:4px 0 8px 0;">🌊 Mở Flow</a>
+    """, height=height)
+
+
+for k,v in {'viral_blueprint':None,'flow_rows':[],'flow_clips':[],'flow_quick_settings':{},'viral_product_prompt_data':None,'video_grid_rows':default_video_grid_rows(10)}.items():
     if k not in st.session_state: st.session_state[k]=v.copy() if isinstance(v,(list,dict)) else v
 with st.sidebar:
     st.markdown('## 🎬 AUTO VEO Studio'); st.caption(APP_VERSION); compact=st.checkbox('Giao diện gọn',value=True); ui_mode=st.radio('Chế độ',['Simple','Advanced'],horizontal=True,index=0)
@@ -675,13 +938,38 @@ with st.sidebar:
         out = pdir / 'series_prompt_pack.json'
         out.write_text(json.dumps(pack, ensure_ascii=False, indent=2), encoding='utf-8')
         st.download_button('⬇️ Tải series_prompt_pack.json', out.read_bytes(), out.name, mime='application/json', use_container_width=True)
+    st.divider(); st.markdown('### 🔄 Prompt Sync')
+    gemini_api_key_sidebar = st.text_input('Gemini API key optional', value='', type='password', help='Chỉ dùng nếu bạn muốn app gọi Gemini API chính thức. Không dùng cookie/browser automation.')
+    st.caption('ChatGPT prompt sync: copy/paste prompt từ ChatGPT vào Prompt Bank. Gemini sync: dùng API key nếu có.')
+    st.caption('Flow/Veo account: app không lấy cookie tài khoản Google Flow. Dùng Manual Flow hoặc API key chính thức khi có.')
+
 st.markdown(style_theme_css(global_style_preset, active_secondary_style),unsafe_allow_html=True)
-st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v3.2 — Smart Style AI + 3-Way Blend</h1><p>AI Style Vision · 3-Way Blend · Style Ranking · Apply Suggestion · Series Prompt Pack</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
-SIMPLE_TABS=['🎯 Viral Director','🌊 Flow Assisted','🏠 Project','📊 Dashboard']; ADVANCED_TABS=SIMPLE_TABS+['🎨 Style Gallery','🖼️ Thumbnail Lab','🧾 Logs','🚀 Deploy']; names=SIMPLE_TABS if ui_mode=='Simple' else ADVANCED_TABS; tabs=st.tabs(names)
+
+st.markdown("""
+<style>
+.block-container {padding-top: 0.9rem; padding-bottom: 1.2rem; max-width: 1450px;}
+div[data-testid="stHorizontalBlock"] {gap: 0.8rem;}
+.video-chip {display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:700; margin-bottom:8px;}
+.video-chip.gray {background:#e5e7eb; color:#111827;}
+.video-chip.blue {background:#dbeafe; color:#1d4ed8;}
+.video-chip.yellow {background:#fef3c7; color:#92400e;}
+.video-chip.teal {background:#ccfbf1; color:#0f766e;}
+.video-chip.red {background:#fee2e2; color:#b91c1c;}
+.video-chip.green {background:#dcfce7; color:#166534;}
+.video-card {border:1px solid rgba(255,255,255,.12); border-radius:18px; padding:12px; background:rgba(255,255,255,.03);}
+.small-muted {opacity:.8; font-size:12px;}
+.grid-progress-label {font-size:13px; font-weight:700; margin: 4px 0 8px 0;}
+.reorder-box {padding:10px;border:1px dashed rgba(255,255,255,.18);border-radius:16px;background:rgba(255,255,255,.025);}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v3.5.1 — Final Checked Stable</h1><p>Final Checked · Even Resolution · Stable FFmpeg · Flow Manual</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
+SIMPLE_TABS=['🎯 Viral Director','🎞️ Video Grid','🌊 Flow Assisted','🏠 Project']; ADVANCED_TABS=SIMPLE_TABS+['🔄 Prompt Sync','🖼️ Thumbnail Lab','📊 Dashboard']; names=SIMPLE_TABS if ui_mode=='Simple' else ADVANCED_TABS; tabs=st.tabs(names)
 def tab(name): return tabs[names.index(name)]
 def has_tab(name): return name in names
 with tab('🎯 Viral Director'):
     st.markdown('## 🎯 Viral Content Director')
+    st.caption('Tạo idea/prompt tại đây, sau đó bấm gửi sang 10 ô Video Grid hoặc Flow Assisted.')
     st.markdown('### 🎨 Preview style đang dùng')
     st.markdown(style_preview_card(global_style_preset, selected=True), unsafe_allow_html=True)
     c1,c2=st.columns([1.05,.95])
@@ -726,10 +1014,10 @@ with tab('🎯 Viral Director'):
     with sg1:
         if st.button('🤖 AI gợi ý style theo sản phẩm', use_container_width=True):
             suggestion = suggest_style_combo_v32(viral_product_name, viral_product_type, viral_product_mood, viral_product_target, pdir)
-            st.session_state['viral_product_style_preset'] = suggestion['primary_style']
-            st.session_state['viral_product_secondary_style'] = suggestion['secondary_style'] or '(None)'
-            st.session_state['viral_product_tertiary_style'] = suggestion['tertiary_style'] or '(None)'
+            # Không gán trực tiếp vào key widget sau khi widget đã render.
+            # Streamlit sẽ lỗi nếu set st.session_state['viral_product_style_preset'] tại đây.
             st.session_state['last_product_style_suggestion'] = suggestion
+            st.success('Đã tạo gợi ý style. Bấm Apply suggestion 1 chạm để áp dụng vào project.')
             st.rerun()
     with sg2:
         suggestion = st.session_state.get('last_product_style_suggestion')
@@ -847,12 +1135,158 @@ with tab('🎯 Viral Director'):
         if st.button('➡️ Gửi prompt sang Flow Assisted',use_container_width=True):
             suffix=flow_settings_suffix(st.session_state.get('flow_quick_settings',{})); st.session_state.flow_rows=[{'scene':s['scene'],'status':'Chưa làm','narration':s['voiceover'],'prompt':s['flow_prompt']+'\n\n'+suffix,'note':''} for s in bp['shots']]; st.success('Đã gửi prompt sang Flow Assisted.')
         st.markdown('### Gói tối ưu'); st.json(bp['optimization'])
+with tab('🎞️ Video Grid'):
+    st.markdown('## 🎞️ Video Grid Pro — 10 ô video riêng biệt')
+    st.caption('Mỗi ô có prompt riêng, copy prompt, mở Flow, upload video, dấu tích, màu trạng thái, reorder và lọc nhanh.')
+
+    if 'video_grid_rows' not in st.session_state or not st.session_state.get('video_grid_rows'):
+        st.session_state.video_grid_rows = default_video_grid_rows(10)
+    st.session_state.video_grid_rows = normalize_video_grid_rows(st.session_state.video_grid_rows, 10)
+
+    gs = video_grid_summary(st.session_state.video_grid_rows)
+    progress = video_grid_progress_ratio(st.session_state.video_grid_rows)
+    st.markdown(f"<div class='grid-progress-label'>Tiến độ tổng: {int(progress*100)}%</div>", unsafe_allow_html=True)
+    st.progress(progress)
+
+    g1,g2,g3,g4,g5 = st.columns(5)
+    g1.metric('Tổng ô', gs['total'])
+    g2.metric('Có prompt', gs['prompts'])
+    g3.metric('Có video', gs['videos'])
+    g4.metric('Hoàn tất', gs['completed'])
+    g5.metric('Lỗi', gs['errors'])
+
+    st.markdown('### ⚡ Thao tác nhanh')
+    a1,a2,a3,a4 = st.columns(4)
+    with a1:
+        if st.button('📥 Nạp prompt từ Viral/Flow', use_container_width=True):
+            st.session_state.video_grid_rows = video_grid_from_flow_rows(st.session_state.get('flow_rows', []), 10)
+            st.success('Đã nạp prompt vào 10 ô video.')
+            st.rerun()
+    with a2:
+        if st.button('💾 Lưu 10 ô sang Flow Assisted', use_container_width=True):
+            st.session_state.flow_rows = flow_rows_from_video_grid(st.session_state.video_grid_rows)
+            st.success('Đã đồng bộ 10 ô sang Flow Assisted.')
+    with a3:
+        if st.button('🌊 Mở Google Flow', use_container_width=True):
+            st.link_button('Bấm để mở Flow', FLOW_URL, use_container_width=True)
+    with a4:
+        if st.button('🧹 Reset 10 ô video', use_container_width=True):
+            st.session_state.video_grid_rows = default_video_grid_rows(10)
+            st.success('Đã reset 10 ô video.')
+            st.rerun()
+
+    st.markdown('### 🔎 Lọc & đổi thứ tự')
+    f1, f2 = st.columns([1, 1.4])
+    with f1:
+        grid_filter = st.selectbox('Lọc ô video', ['Tất cả','Chỉ ô lỗi','Chỉ ô chưa làm','Chỉ ô hoàn tất','Chưa hoàn tất','Đã có video'], index=0)
+    with f2:
+        with st.expander('↕️ Kéo/sửa thứ tự scene', expanded=False):
+            st.caption('Streamlit chưa hỗ trợ drag-drop native ổn định, nên bản này dùng bảng order: sửa số thứ tự rồi bấm áp dụng. Kết quả giống reorder scene.')
+            order_data = [{'order': i+1, 'scene': r['scene'], 'title': r.get('title','')} for i, r in enumerate(st.session_state.video_grid_rows)]
+            edited_order = st.data_editor(
+                order_data,
+                use_container_width=True,
+                hide_index=True,
+                key='video_grid_order_editor',
+                column_config={
+                    'order': st.column_config.NumberColumn('Thứ tự mới', min_value=1, max_value=10, step=1),
+                    'scene': st.column_config.NumberColumn('Scene hiện tại', disabled=True),
+                    'title': st.column_config.TextColumn('Tên cảnh', disabled=True),
+                }
+            )
+            if st.button('✅ Áp dụng thứ tự mới', use_container_width=True):
+                st.session_state.video_grid_rows = reorder_video_grid_rows(st.session_state.video_grid_rows, edited_order)
+                st.success('Đã đổi thứ tự 10 ô video.')
+                st.rerun()
+
+    clips_lookup = {}
+    for c in merge_clips(scan_inbox(pdir), st.session_state.get('flow_clips', [])):
+        try:
+            clips_lookup[int(c.get('scene') or 0)] = c
+        except Exception:
+            pass
+
+    rows_all = normalize_video_grid_rows(st.session_state.video_grid_rows, 10)
+    rows_show = filter_video_grid_rows(rows_all, grid_filter)
+    st.caption(f'Đang hiển thị {len(rows_show)}/10 ô theo bộ lọc: {grid_filter}')
+
+    updated_by_scene = {r['scene']: dict(r) for r in rows_all}
+    if not rows_show:
+        st.warning('Không có ô nào khớp bộ lọc hiện tại.')
+    for start_i in range(0, len(rows_show), 2):
+        cols = st.columns(2)
+        pair = rows_show[start_i:start_i+2]
+        for col, row in zip(cols, pair):
+            sc = row['scene']
+            clip = clips_lookup.get(sc)
+            with col:
+                with st.container(border=True):
+                    st.markdown(video_status_chip(row.get('status', 'Chưa làm'), row.get('done', False)), unsafe_allow_html=True)
+                    top1, top2 = st.columns([1.2, 1])
+                    with top1:
+                        title = st.text_input(f'Tên ô {sc}', value=row.get('title', f'Cảnh {sc}'), key=f'grid_title_{sc}')
+                    with top2:
+                        status = st.selectbox(
+                            f'Trạng thái {sc}',
+                            list(VIDEO_STATUS_META.keys()),
+                            index=list(VIDEO_STATUS_META.keys()).index(row.get('status', 'Chưa làm')) if row.get('status', 'Chưa làm') in list(VIDEO_STATUS_META.keys()) else 0,
+                            key=f'grid_status_{sc}'
+                        )
+                    done = st.checkbox(f'Đánh dấu hoàn thành ô {sc}', value=bool(row.get('done', False)), key=f'grid_done_{sc}')
+
+                    narration = st.text_area(f'Voice/Narration {sc}', value=row.get('narration', ''), height=60, key=f'grid_narration_{sc}', placeholder='Voiceover hoặc mô tả ngắn...')
+                    prompt = st.text_area(f'Prompt scene {sc}', value=row.get('prompt', ''), height=145, key=f'grid_prompt_{sc}', placeholder='Prompt riêng cho cảnh này...')
+
+                    bcopy, bflow = st.columns(2)
+                    with bcopy:
+                        copy_prompt_component(prompt, f'scene_{sc}')
+                    with bflow:
+                        flow_open_component(FLOW_URL, f'flow_scene_{sc}')
+
+                    note = st.text_input(f'Ghi chú {sc}', value=row.get('note', ''), key=f'grid_note_{sc}', placeholder='Ghi chú nhanh...')
+                    up = st.file_uploader(f'Upload video cho ô {sc}', type=['mp4','mov','m4v','webm'], key=f'grid_upload_{sc}')
+
+                    video_path = row.get('video_path', '')
+                    if up is not None:
+                        saved = save_uploads(pdir, [up])
+                        if saved:
+                            saved[0]['scene'] = sc
+                            video_path = saved[0]['path']
+                            st.session_state.flow_clips = merge_clips(st.session_state.get('flow_clips', []), [saved[0]])
+                            if status in ['Chưa làm', 'Sẵn sàng copy', 'Đang render']:
+                                status = 'Đã có video'
+                            st.success(f'Đã lưu video cho ô {sc}')
+                    elif clip and Path(clip['path']).exists():
+                        video_path = clip['path']
+
+                    if video_path and Path(video_path).exists():
+                        st.video(video_path)
+                        st.caption(Path(video_path).name)
+
+                    final_status = 'Hoàn tất' if done and status == 'Đã có video' else status
+                    updated_by_scene[sc] = {
+                        'scene': sc,
+                        'title': title,
+                        'status': final_status,
+                        'done': done,
+                        'narration': narration,
+                        'prompt': prompt,
+                        'note': note,
+                        'video_path': video_path,
+                    }
+
+    st.session_state.video_grid_rows = normalize_video_grid_rows([updated_by_scene[i] for i in sorted(updated_by_scene)], 10)
+    st.download_button('⬇️ Tải 10 ô video JSON', json.dumps(st.session_state.video_grid_rows, ensure_ascii=False, indent=2).encode('utf-8'), 'video_grid_rows.json', use_container_width=True)
+
 with tab('🌊 Flow Assisted'):
     st.markdown('## 🌊 Flow Assisted Mode + Flow Quick Settings')
     rows=st.session_state.get('flow_rows',[])
+    if (not rows) and st.session_state.get('video_grid_rows'):
+        st.session_state.flow_rows = flow_rows_from_video_grid(st.session_state.get('video_grid_rows', []))
+        rows = st.session_state.get('flow_rows',[])
     c1,c2=st.columns([1.05,.95])
     with c1:
-        if not rows: st.info('Chưa có prompt. Tạo ở Viral Director hoặc nhập nhanh bên dưới.')
+        if not rows: st.info('Chưa có prompt. Tạo ở Viral Director, Video Grid hoặc nhập nhanh bên dưới.')
         quick_topic=st.text_area('Tạo prompt nhanh nếu chưa có',height=90,placeholder='Nhập brief ngắn...')
     with c2:
         expected=st.number_input('Số scene dự kiến',min_value=1,max_value=50,value=max(1,len(rows) or 5)); voice_label=st.selectbox('Voice hậu kỳ',list(VOICE_PRESETS.keys())); burn_sub=st.checkbox('Burn subtitle vào final',value=True); add_fade=st.checkbox('Nối có fade nhẹ',value=True); thumb_template=st.selectbox('Thumbnail template',list(TEMPLATES.keys()),index=list(TEMPLATES.keys()).index(default_thumb_template)); st.link_button('🌊 Mở Google Flow',FLOW_URL,use_container_width=True)
@@ -876,7 +1310,7 @@ with tab('🌊 Flow Assisted'):
         if quick_topic.strip(): st.session_state.flow_rows=[{'scene':i,'status':'Chưa làm','narration':f'Cảnh {i}: {quick_topic}','prompt':f'{quick_topic}. Scene {i}. Cinematic short-form video, clear subject, smooth motion. '+flow_settings_suffix(flow_settings),'note':''} for i in range(1,6)]; st.rerun()
     rows=st.session_state.get('flow_rows',[])
     if rows:
-        st.markdown('### 1) Checklist + prompt'); edited=st.data_editor(rows,num_rows='dynamic',use_container_width=True,key='flow_rows_editor_clean',column_config={'scene':st.column_config.NumberColumn('Scene',min_value=1),'status':st.column_config.SelectboxColumn('Trạng thái',options=['Chưa làm','Đã copy prompt','Đang render Flow','Đã tải video','Lỗi cần làm lại','Hoàn tất']),'narration':st.column_config.TextColumn('Narration'),'prompt':st.column_config.TextColumn('Prompt dán vào Flow'),'note':st.column_config.TextColumn('Ghi chú')}); st.session_state.flow_rows=edited; txt=write_prompt_txt(pdir,edited); st.download_button('⬇️ Tải toàn bộ prompt TXT',Path(txt).read_bytes(),Path(txt).name,use_container_width=True)
+        st.markdown('### 1) Checklist + prompt (compact)'); edited=st.data_editor(rows,num_rows='dynamic',use_container_width=True,key='flow_rows_editor_clean',column_config={'scene':st.column_config.NumberColumn('Scene',min_value=1),'status':st.column_config.SelectboxColumn('Trạng thái',options=['Chưa làm','Đã copy prompt','Đang render Flow','Đã tải video','Lỗi cần làm lại','Hoàn tất']),'narration':st.column_config.TextColumn('Narration'),'prompt':st.column_config.TextColumn('Prompt dán vào Flow'),'note':st.column_config.TextColumn('Ghi chú')}); st.session_state.flow_rows=edited; txt=write_prompt_txt(pdir,edited); st.download_button('⬇️ Tải toàn bộ prompt TXT',Path(txt).read_bytes(),Path(txt).name,use_container_width=True)
     st.markdown('### 2) Upload hàng loạt hoặc quét Flow Inbox'); inbox=inbox_dir(pdir); st.code(str(inbox),language='text')
     u1,u2,u3=st.columns(3)
     with u1:
@@ -890,13 +1324,73 @@ with tab('🌊 Flow Assisted'):
     if clips: st.dataframe(clips,use_container_width=True)
     st.warning('Còn thiếu scene: '+', '.join(map(str,miss))) if miss else st.success('Đủ scene theo số lượng dự kiến.')
     with st.expander('📋 Bảng cấu hình Flow để thao tác trên điện thoại giống ảnh',expanded=False): st.json(flow_settings)
-    st.markdown('### 3) Build Final'); output_name=st.text_input('Tên final',value='flow_final.mp4'); vertical=st.checkbox('Thumbnail dọc 9:16',value=True); title_text=st.text_input('Text thumbnail/title',value=(rows[0]['narration'][:60] if rows else 'Flow Assisted Video'))
+    st.markdown('### 3) Build Final — thời lượng, tỉ lệ, khung, độ phân giải')
+    output_name=st.text_input('Tên final',value='flow_final.mp4')
+    r1,r2,r3,r4=st.columns(4)
+    with r1:
+        final_seconds_per_clip=st.number_input('Mỗi clip bao nhiêu giây',min_value=0.0,max_value=60.0,value=float(duration_flow),step=1.0,help='0 = giữ thời lượng gốc. Nếu nhập số, app sẽ cắt/kéo frame cuối để mỗi clip đúng số giây.')
+        final_aspect=st.selectbox('Tỉ lệ khung', ['9:16','16:9','1:1','4:5','3:4'], index=['9:16','16:9','1:1','4:5','3:4'].index(aspect_ratio) if aspect_ratio in ['9:16','16:9','1:1','4:5','3:4'] else 0)
+    with r2:
+        final_resolution=st.selectbox('Độ phân giải', ['720','1080','2000'], index=1, help='720/1080/2000 là cạnh dài theo tỉ lệ đã chọn. Ví dụ 9:16 1080 = 608x1080.')
+        final_fps=st.selectbox('Khung hình / FPS', [24,30,60], index=1)
+    with r3:
+        final_fit_mode=st.selectbox('Chế độ khung', ['pad','crop'], index=0, format_func=lambda x: 'Giữ đủ hình + viền nền' if x=='pad' else 'Crop kín khung')
+        vertical=st.checkbox('Thumbnail dọc 9:16',value=(final_aspect in ['9:16','3:4','4:5']))
+    with r4:
+        final_use_studio=st.checkbox('Chuẩn hóa clip trước khi nối', value=True, help='Nên bật nếu clip tải từ Flow có kích thước/FPS khác nhau.')
+        st.info(f'Final: {final_aspect} · {final_resolution} · {final_fps}fps')
+    title_text=st.text_input('Text thumbnail/title',value=(rows[0]['narration'][:60] if rows else 'Flow Assisted Video'))
+
     if st.button('⚡ Build Final từ clip đã map',type='primary',use_container_width=True):
         try:
             clip_paths=[c['path'] for c in clips if Path(c['path']).exists()]
             if not clip_paths: st.error('Chưa có clip hợp lệ.')
             else:
-                raw=concat_videos(pdir,clip_paths,output_name,add_fade); narr=[r.get('narration','') for r in rows] if rows else [title_text]; voice_text=' '.join(narr); voice=tts_edge(pdir,voice_text,voice_label); srt=make_srt(pdir,narr,4); final=mix_audio_subtitles(pdir,raw,voice,srt,burn_sub); base_thumb=thumbnail_from_video(pdir,final); thumb=make_thumbnail(pdir,base_thumb,title_text,thumb_template,vertical); meta={'title':title_text,'caption':voice_text[:400],'hashtags':'#AIVideo #Veo #Shorts #Reels #ViralContent','clips':clips,'created_at':now(),'template':thumb_template,'flow_settings':flow_settings}; package=publish_package(pdir,final,thumb,srt,voice,meta); st.success('Đã build xong final video.'); st.video(final); st.download_button('⬇️ Tải final video',Path(final).read_bytes(),Path(final).name,use_container_width=True); st.image(thumb,caption='Thumbnail',use_container_width=True); st.download_button('📦 Tải publish package',Path(package).read_bytes(),Path(package).name,use_container_width=True)
+                if final_use_studio:
+                    raw=concat_videos_studio(
+                        pdir,
+                        clip_paths,
+                        output_name,
+                        add_fade,
+                        seconds_per_clip=final_seconds_per_clip,
+                        aspect_ratio=final_aspect,
+                        resolution=final_resolution,
+                        fps=final_fps,
+                        fit_mode=final_fit_mode,
+                    )
+                else:
+                    raw=concat_videos(pdir,clip_paths,output_name,add_fade)
+                narr=[r.get('narration','') for r in rows] if rows else [title_text]
+                voice_text=' '.join(narr)
+                voice=tts_edge(pdir,voice_text,voice_label)
+                caption_seconds=max(1, int(final_seconds_per_clip or 4))
+                srt=make_srt(pdir,narr,caption_seconds)
+                final=mix_audio_subtitles(pdir,raw,voice,srt,burn_sub)
+                base_thumb=thumbnail_from_video(pdir,final)
+                thumb=make_thumbnail(pdir,base_thumb,title_text,thumb_template,vertical)
+                meta={
+                    'title':title_text,
+                    'caption':voice_text[:400],
+                    'hashtags':'#AIVideo #Veo #Shorts #Reels #ViralContent',
+                    'clips':clips,
+                    'created_at':now(),
+                    'template':thumb_template,
+                    'flow_settings':flow_settings,
+                    'final_render_settings':{
+                        'seconds_per_clip': final_seconds_per_clip,
+                        'aspect_ratio': final_aspect,
+                        'resolution': final_resolution,
+                        'fps': final_fps,
+                        'fit_mode': final_fit_mode,
+                        'standardize_before_concat': final_use_studio,
+                    }
+                }
+                package=publish_package(pdir,final,thumb,srt,voice,meta)
+                st.success('Đã build xong final video.')
+                st.video(final)
+                st.download_button('⬇️ Tải final video',Path(final).read_bytes(),Path(final).name,use_container_width=True)
+                st.image(thumb,caption='Thumbnail',use_container_width=True)
+                st.download_button('📦 Tải publish package',Path(package).read_bytes(),Path(package).name,use_container_width=True)
         except Exception as e: log_error('build_flow_final',e,{'project':project_name}); st.exception(e)
 with tab('🏠 Project'):
     st.markdown('## 🏠 Project'); rep=storage_report(project_name); style_score, style_checks = compute_style_consistency(project_style_cfg, global_style_preset, active_secondary_style, active_tertiary_style); a,b,e=st.columns(3); a.metric('Project size',f"{rep['total_mb']} MB"); b.metric('Files',rep['files']); e.metric('Style consistency', f'{style_score}/100'); c,d=st.columns(2)
@@ -956,6 +1450,82 @@ if has_tab('🎨 Style Gallery'):
                             st.rerun()
                     st.caption('Prompt direction: ' + STYLE_PRESETS.get(style_name, style_name) + ' | Palette: ' + style_palette_text(style_name))
         st.info('Tip: Nếu muốn blend 2 phong cách, hãy Apply style chính rồi chọn thêm Secondary blend style ở sidebar. Style memory có thể lưu cho từng series/campaign.')
+
+if has_tab('🔄 Prompt Sync'):
+    with tab('🔄 Prompt Sync'):
+        st.markdown('## 🔄 Prompt Sync — ChatGPT + Gemini')
+        st.caption('Đồng bộ prompt theo cách an toàn: ChatGPT dùng copy/paste prompt bank; Gemini dùng API key chính thức nếu bạn có. Không lấy cookie tài khoản.')
+
+        st.markdown('### 1) Prompt Bank từ ChatGPT/Gemini')
+        uploaded_prompt_files = st.file_uploader('Upload file prompt .txt/.md/.json', type=['txt','md','json'], accept_multiple_files=True, key='prompt_bank_uploads')
+        pasted_prompt = st.text_area('Hoặc dán prompt từ ChatGPT/Gemini vào đây', height=180, placeholder='Dán prompt, template, kịch bản, prompt Flow/Veo...')
+        prompt_bank_name = st.text_input('Tên file lưu prompt', value='chatgpt_gemini_prompt.txt')
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button('💾 Lưu vào Prompt Bank', use_container_width=True):
+                saved = []
+                if pasted_prompt.strip():
+                    saved.append(save_prompt_bank_text(pdir, prompt_bank_name, pasted_prompt, 'manual'))
+                for f in uploaded_prompt_files or []:
+                    f.seek(0)
+                    content = f.read().decode('utf-8', errors='ignore')
+                    f.seek(0)
+                    saved.append(save_prompt_bank_text(pdir, f.name, content, 'upload'))
+                st.success(f'Đã lưu {len(saved)} prompt file.')
+        with col_b:
+            if st.button('📖 Refresh Prompt Bank', use_container_width=True):
+                st.rerun()
+
+        files = list_prompt_bank_files(pdir)
+        st.write(f'Prompt Bank hiện có: {len(files)} file')
+        if files:
+            st.dataframe([{'file': p.name, 'size_kb': round(p.stat().st_size/1024, 1)} for p in files], use_container_width=True)
+            with st.expander('Xem tóm tắt Prompt Bank', expanded=False):
+                st.text_area('Prompt bank summary', read_prompt_bank_summary(pdir), height=240)
+
+        st.markdown('### 2) Sinh prompt đồng bộ theo style/project')
+        sync_task = st.text_area('Yêu cầu sinh prompt đồng bộ', value='Tạo 3 prompt Flow/Veo 8s cho sản phẩm, giữ style project, có voiceover tiếng Việt, không text overlay.', height=120)
+        context = build_prompt_sync_context(pdir)
+        with st.expander('Context sẽ gửi cho AI', expanded=False):
+            st.text_area('Prompt sync context', context, height=260)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button('🧠 Tạo prompt local từ Prompt Bank', use_container_width=True):
+                local_output = (
+                    context
+                    + "\n\nLOCAL SYNTHESIS TASK:\n"
+                    + sync_task
+                    + "\n\nPROMPT OUTPUT:\n"
+                    + f"Use current project style blend: {blended_style_label(global_style_preset, active_secondary_style, active_tertiary_style)}.\n"
+                    + f"Palette: {blended_style_palette(global_style_preset, active_secondary_style, active_tertiary_style)}.\n"
+                    + "Generate Flow/Veo prompts that preserve product identity, avoid text overlay, use Vietnamese voiceover, and follow saved prompt bank style."
+                )
+                st.session_state['prompt_sync_output'] = local_output
+        with c2:
+            if st.button('🔮 Gọi Gemini API để gợi ý prompt', use_container_width=True):
+                ok, out = call_gemini_prompt_sync(sync_task, context, gemini_api_key_sidebar)
+                if ok:
+                    st.session_state['prompt_sync_output'] = out
+                    st.success('Gemini đã trả về prompt.')
+                else:
+                    st.error(out)
+
+        output = st.session_state.get('prompt_sync_output', '')
+        if output:
+            st.markdown('### 3) Output prompt đồng bộ')
+            st.text_area('Prompt Sync Output', output, height=360)
+            st.download_button('⬇️ Tải prompt_sync_output.txt', output.encode('utf-8'), 'prompt_sync_output.txt', use_container_width=True)
+            if st.button('➡️ Gửi output sang Flow Assisted', use_container_width=True):
+                st.session_state.flow_rows = [{
+                    'scene': 1,
+                    'status': 'Chưa làm',
+                    'narration': 'Prompt Sync Output',
+                    'prompt': output,
+                    'note': 'Prompt Sync',
+                }]
+                st.success('Đã gửi sang Flow Assisted.')
+
 
 if has_tab('🖼️ Thumbnail Lab'):
     with tab('🖼️ Thumbnail Lab'):
@@ -1044,4 +1614,4 @@ if has_tab('🧾 Logs'):
 if has_tab('🚀 Deploy'):
     with tab('🚀 Deploy'):
         st.markdown('## 🚀 Deploy checklist'); st.json({'app.py':Path('app.py').exists(),'requirements.txt':Path('requirements.txt').exists(),'packages.txt':Path('packages.txt').exists(),'.streamlit/config.toml':Path('.streamlit/config.toml').exists(),'.gitignore':Path('.gitignore').exists()}); st.code('git init\ngit add .\ngit commit -m "AUTO VEO Studio v2.1"\ngit branch -M main\ngit remote add origin https://github.com/YOUR_USERNAME/auto-veo-studio.git\ngit push -u origin main',language='bash')
-st.caption('v3.2 Smart Style AI + 3-Way Blend: thêm setting giống Google Flow mobile để copy prompt và chọn model/tỉ lệ/thời lượng/credit nhanh hơn.')
+st.caption('v3.5.1 Final Checked Stable: thêm setting giống Google Flow mobile để copy prompt và chọn model/tỉ lệ/thời lượng/credit nhanh hơn.')

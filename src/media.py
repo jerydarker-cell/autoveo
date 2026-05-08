@@ -72,3 +72,115 @@ def publish_package(project_dir,final_video,thumbnail,srt,voice,metadata):
     with zipfile.ZipFile(zp,'w',zipfile.ZIP_DEFLATED) as z:
         for p in folder.rglob('*'): z.write(p,arcname=p.relative_to(folder))
     return str(zp)
+
+
+def _even_dim(value):
+    """Return a positive even integer for H.264/FFmpeg compatibility."""
+    v = int(round(float(value)))
+    if v < 2:
+        v = 2
+    return v if v % 2 == 0 else v + 1
+
+def video_target_size(aspect_ratio='9:16', resolution='1080'):
+    """Return even width,height from aspect + long-edge resolution.
+
+    H.264 encoders commonly require even dimensions. This prevents failures
+    for settings like 9:16 + 720 or 9:16 + 2000.
+    """
+    res = _even_dim(str(resolution).replace('p','').strip() or 1080)
+    if aspect_ratio == '9:16':
+        return _even_dim(res * 9 / 16), res
+    if aspect_ratio == '16:9':
+        return res, _even_dim(res * 9 / 16)
+    if aspect_ratio == '1:1':
+        return res, res
+    if aspect_ratio == '4:5':
+        return _even_dim(res * 4 / 5), res
+    if aspect_ratio == '3:4':
+        return _even_dim(res * 3 / 4), res
+    return _even_dim(res * 9 / 16), res
+
+def process_clip_for_final(project_dir, clip, index, seconds_per_clip=0, aspect_ratio='9:16', resolution='1080', fps=30, fit_mode='pad'):
+    """Normalize one clip to target duration/aspect/resolution/fps for stable concatenation."""
+    ff = ffmpeg_path()
+    if not ff:
+        return str(clip)
+    w, h = video_target_size(aspect_ratio, resolution)
+    clip = str(clip)
+    out_dir = project_dir / 'exports' / 'processed_clips'
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"segment_{index:02d}_{w}x{h}_{fps}fps.mp4"
+
+    if fit_mode == 'crop':
+        vf = f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},fps={fps},format=yuv420p"
+    else:
+        vf = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,fps={fps},format=yuv420p"
+
+    cmd = [ff, '-y', '-i', clip]
+    if seconds_per_clip and float(seconds_per_clip) > 0:
+        # tpad keeps short clips from ending too early; -t cuts to exact duration.
+        vf = vf + f",tpad=stop_mode=clone:stop_duration={float(seconds_per_clip):.2f}"
+        cmd += ['-vf', vf, '-t', f"{float(seconds_per_clip):.2f}"]
+    else:
+        cmd += ['-vf', vf]
+
+    cmd += [
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '20',
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        '-an',
+        str(out)
+    ]
+    ok, msg = run_cmd(cmd, timeout=1200)
+    if not ok:
+        raise RuntimeError(msg)
+    return str(out)
+
+def concat_videos_studio(project_dir, clips, output_name='final.mp4', add_fade=False, seconds_per_clip=0, aspect_ratio='9:16', resolution='1080', fps=30, fit_mode='pad'):
+    """Process clips to same duration/aspect/resolution/fps and concatenate.
+    This is more stable than concat copy for mixed Flow downloads.
+    """
+    if not clips:
+        raise RuntimeError('Chưa có clip để nối.')
+    ff = ffmpeg_path()
+    if not ff:
+        return concat_videos(project_dir, clips, output_name, add_fade)
+
+    processed = []
+    for i, clip in enumerate(clips, 1):
+        if Path(clip).exists():
+            processed.append(process_clip_for_final(
+                project_dir,
+                clip,
+                i,
+                seconds_per_clip=seconds_per_clip,
+                aspect_ratio=aspect_ratio,
+                resolution=resolution,
+                fps=fps,
+                fit_mode=fit_mode,
+            ))
+
+    if not processed:
+        raise RuntimeError('Không có clip hợp lệ sau xử lý.')
+
+    out = project_dir / 'exports' / output_name
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    work = project_dir / 'exports' / f"concat_studio_{datetime.now().strftime('%H%M%S')}"
+    work.mkdir(parents=True, exist_ok=True)
+    lf = work / 'concat.txt'
+    lf.write_text('\n'.join([f"file '{Path(c).resolve().as_posix()}'" for c in processed]), encoding='utf-8')
+
+    ok, msg = run_cmd([ff, '-y', '-f', 'concat', '-safe', '0', '-i', str(lf), '-c', 'copy', str(out)], timeout=1200)
+    if not ok:
+        ok, msg = run_cmd([
+            ff, '-y', '-f', 'concat', '-safe', '0', '-i', str(lf),
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+            str(out)
+        ], timeout=1200)
+    if not ok:
+        raise RuntimeError(msg)
+    return str(out)

@@ -1,4 +1,4 @@
-# AUTO VEO Studio v3.2 — Flow Quick Controls
+# AUTO VEO Studio v3.5.1 — Flow Quick Controls
 
 Bản v2.1 tập trung vào workflow Flow trên điện thoại giống ảnh bạn gửi.
 
@@ -325,3 +325,142 @@ Nút **Apply suggestion 1 chạm** lưu ngay combo style gợi ý vào project.
 
 ### Series prompt pack
 Sidebar có nút sinh `series_prompt_pack.json` theo style hiện tại và series/campaign đang chọn.
+
+
+## v3.2.1 — Session Fix + Prompt Sync
+
+Sửa lỗi Streamlit:
+
+```text
+st.session_state['viral_product_style_preset'] = suggestion['primary_style']
+StreamlitAPIException
+```
+
+Nguyên nhân: không được gán lại key của widget sau khi widget đã render.
+
+Cách sửa:
+- Nút AI gợi ý style chỉ lưu `last_product_style_suggestion`
+- Nút Apply suggestion lưu vào `project_style.json` và rerun
+- Không gán trực tiếp vào key widget `viral_product_style_preset`
+
+Thêm tab mới trong Advanced:
+
+```text
+🔄 Prompt Sync
+```
+
+Chức năng:
+- Lưu prompt từ ChatGPT/Gemini vào Prompt Bank
+- Upload/dán prompt .txt/.md/.json
+- Tạo prompt đồng bộ từ project style, style memory, style reference và prompt bank
+- Gọi Gemini API chính thức nếu bạn có GEMINI_API_KEY
+- Gửi output sang Flow Assisted
+
+Lưu ý:
+- Không dùng cookie tài khoản ChatGPT/Gemini
+- ChatGPT prompt sync tốt nhất là copy/paste hoặc upload prompt export vào Prompt Bank
+- Gemini sync dùng API key chính thức
+
+
+## v3.3 — Compact Video Grid
+
+Nâng cấp theo hướng gọn hơn và dễ thao tác hơn:
+
+- Thêm tab **🎞️ Video Grid**
+- Có sẵn **10 ô video riêng biệt**
+- Mỗi ô có:
+  - tên cảnh
+  - trạng thái màu
+  - dấu tích hoàn thành
+  - prompt riêng
+  - narration riêng
+  - ghi chú
+  - upload video riêng
+  - preview video ngay trong ô
+- Có thể:
+  - nạp prompt từ Viral/Flow vào 10 ô
+  - lưu 10 ô sang Flow Assisted
+  - reset nhanh 10 ô
+  - tải JSON của 10 ô video
+
+### Màu trạng thái
+- Xám: Chưa làm
+- Xanh dương: Sẵn sàng copy
+- Vàng: Đang render
+- Xanh ngọc: Đã có video
+- Đỏ: Lỗi
+- Xanh lá: Hoàn tất
+
+### Gọn hơn
+- Simple mode chỉ còn:
+  - Viral Director
+  - Video Grid
+  - Flow Assisted
+  - Project
+- Advanced mode:
+  - Prompt Sync
+  - Thumbnail Lab
+  - Dashboard
+
+
+## v3.4 — Video Grid Pro
+
+Nâng cấp Video Grid:
+
+- Mỗi ô có nút **Copy Prompt**
+- Mỗi ô có nút **Mở Flow**
+- Có đổi thứ tự scene bằng bảng order
+- Có progress bar tự động theo 10 ô
+- Có bộ lọc:
+  - Tất cả
+  - Chỉ ô lỗi
+  - Chỉ ô chưa làm
+  - Chỉ ô hoàn tất
+  - Chưa hoàn tất
+  - Đã có video
+
+### Lưu ý về drag/drop
+Streamlit chưa có drag-drop native ổn định trong core widget, nên v3.4 dùng bảng **Thứ tự mới** để đổi thứ tự scene. Thao tác này ổn định hơn khi deploy trên Streamlit Cloud.
+
+
+## v3.5 — Final Render Settings
+
+Thêm phần cấu hình khi nối nhiều clip:
+
+- Mỗi clip bao nhiêu giây
+- Tỉ lệ khung: 9:16, 16:9, 1:1, 4:5, 3:4
+- Độ phân giải: 720, 1080, 2000
+- Khung hình/FPS: 24, 30, 60
+- Chế độ khung:
+  - giữ đủ hình + viền nền
+  - crop kín khung
+- Chuẩn hóa clip trước khi nối
+
+### Đồng bộ tài khoản Flow/Veo
+App không lấy cookie hoặc đăng nhập hộ tài khoản Google Flow.
+Cách ổn định:
+- dùng Flow Manual Mode để render bằng tài khoản Flow của bạn
+- hoặc dùng API chính thức nếu Google cấp API key cho Veo/Gemini/Vertex AI
+
+Flow Manual Mode vẫn là luồng chính:
+Prompt → Copy → Mở Flow → Render bằng credit Flow → Upload clip về app → Build Final.
+
+
+## v3.5.1 — Final Checked Stable
+
+Bản kiểm tra cuối và vá ổn định FFmpeg.
+
+### Đã sửa
+- `video_target_size()` giờ luôn trả về kích thước chẵn.
+- Tránh lỗi H.264/FFmpeg khi chọn 720 hoặc 2000 với tỉ lệ 9:16/16:9.
+  Ví dụ:
+  - 9:16 + 720 → 406x720
+  - 9:16 + 1080 → 608x1080
+  - 9:16 + 2000 → 1126x2000
+  - 16:9 + 2000 → 2000x1126
+
+### Trạng thái
+- Compile toàn bộ Python: OK
+- Smoke test module lõi: OK
+- ZIP đủ file src/requirements/scripts: OK
+- Không kèm runtime/cache/projects/logs: OK
