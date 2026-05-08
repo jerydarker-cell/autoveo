@@ -1,4 +1,4 @@
-# AUTO VEO Studio v2.2 — Flow Quick Controls
+# AUTO VEO Studio v2.3 — Flow Quick Controls
 
 Bản v2.1 tập trung vào workflow Flow trên điện thoại giống ảnh bạn gửi.
 
@@ -79,3 +79,22 @@ Output:
 - Voiceover tiếng Việt
 - 3 prompt Flow/Veo
 - Product Prompt Package ZIP
+
+
+## v2.3 — Viral Product Flow
+
+Đã đưa chức năng Product Upload vào ngay tab **Viral Director**.
+
+Luồng mới:
+
+```text
+Viral Director
+→ Upload ảnh sản phẩm
+→ tạo concept/kịch bản 8s
+→ chọn mood nhạc
+→ xuất 3 prompt Flow/Veo
+→ gửi prompt sang Flow Assisted
+→ copy prompt sang Google Flow
+```
+
+Product Prompt Studio vẫn còn như tab riêng để dùng độc lập, nhưng luồng chính giờ nằm trong Viral Director.

@@ -40,7 +40,7 @@ with st.sidebar:
     st.divider(); st.markdown('### ⚙️ Runtime'); st.caption(f"FFmpeg: {'OK' if ffmpeg_path() else 'Chưa thấy'}")
     if not ffmpeg_path(): st.warning('Cần FFmpeg để nối video/ghép subtitle/audio.'); st.code('Windows: winget install Gyan.FFmpeg\nMac: brew install ffmpeg')
     st.divider(); default_thumb_template=st.selectbox('Template thumbnail',list(TEMPLATES.keys()),index=0)
-st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v2.2 — Product Prompt Studio</h1><p>Product Prompt Studio · Viral Director · Flow Assisted · Flow Quick Settings · Thumbnail Templates</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
+st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v2.3 — Viral Product Flow</h1><p>Viral Director + Product Upload · Flow Assisted · Flow Quick Settings · Thumbnail Templates</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
 SIMPLE_TABS=['🎯 Viral Director','🌊 Flow Assisted','🏠 Project','📊 Dashboard']; ADVANCED_TABS=SIMPLE_TABS+['🖼️ Thumbnail Lab','🧾 Logs','🚀 Deploy']; names=SIMPLE_TABS if ui_mode=='Simple' else ADVANCED_TABS; tabs=st.tabs(names)
 def tab(name): return tabs[names.index(name)]
 def has_tab(name): return name in names
