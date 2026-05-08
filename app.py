@@ -9,7 +9,7 @@ from src.media import concat_videos, make_srt, thumbnail_from_video, mix_audio_s
 from src.tts import VOICE_PRESETS, tts_edge
 from src.thumbnails import TEMPLATES, make_thumbnail
 from src.product_prompt import PRODUCT_MOODS, PRODUCT_TYPES, build_product_prompts, export_product_prompt_package
-APP_VERSION='2.1.0 Flow Quick Controls'
+APP_VERSION='2.4.0 Product Inside Viral Director'
 FLOW_URL='https://labs.google/fx/tools/flow'
 FLOW_MODEL_CREDITS={'Veo 3.1 - Lite':8,'Veo 3.1 - Fast':10,'Veo 3.1 - Quality':15,'Veo 3.1 - Lite [Lower Priority]':6,'Veo 3.1 - Fast [Lower Priority]':8}
 def estimate_flow_credits(settings):
@@ -27,9 +27,9 @@ def flow_settings_suffix(settings):
     if settings.get('camera_note'): parts.append('Camera instruction: '+settings.get('camera_note'))
     parts.append('No watermark, no unreadable text, clean composition.')
     return ' '.join(parts)
-st.set_page_config(page_title='AUTO VEO Studio v2.1',page_icon='🎬',layout='wide')
+st.set_page_config(page_title='AUTO VEO Studio v2.4',page_icon='🎬',layout='wide')
 st.markdown('''<style>.block-container{padding-top:.85rem;max-width:1320px}.hero{padding:22px 26px;border-radius:26px;background:linear-gradient(135deg,rgba(90,80,255,.18),rgba(255,255,255,.035));border:1px solid rgba(255,255,255,.14);margin-bottom:18px}.hero h1{margin:0;font-size:2rem}.badge{display:inline-block;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);margin:5px 6px 0 0;font-size:.86rem}</style>''',unsafe_allow_html=True)
-for k,v in {'viral_blueprint':None,'flow_rows':[],'flow_clips':[],'flow_quick_settings':{}}.items():
+for k,v in {'viral_blueprint':None,'flow_rows':[],'flow_clips':[],'flow_quick_settings':{},'viral_product_prompt_data':None}.items():
     if k not in st.session_state: st.session_state[k]=v.copy() if isinstance(v,(list,dict)) else v
 with st.sidebar:
     st.markdown('## 🎬 AUTO VEO Studio'); st.caption(APP_VERSION); compact=st.checkbox('Giao diện gọn',value=True); ui_mode=st.radio('Chế độ',['Simple','Advanced'],horizontal=True,index=0)
@@ -40,7 +40,7 @@ with st.sidebar:
     st.divider(); st.markdown('### ⚙️ Runtime'); st.caption(f"FFmpeg: {'OK' if ffmpeg_path() else 'Chưa thấy'}")
     if not ffmpeg_path(): st.warning('Cần FFmpeg để nối video/ghép subtitle/audio.'); st.code('Windows: winget install Gyan.FFmpeg\nMac: brew install ffmpeg')
     st.divider(); default_thumb_template=st.selectbox('Template thumbnail',list(TEMPLATES.keys()),index=0)
-st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v2.3 — Viral Product Flow</h1><p>Viral Director + Product Upload · Flow Assisted · Flow Quick Settings · Thumbnail Templates</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
+st.markdown(f'''<div class="hero"><h1>🎬 AUTO VEO Studio v2.4 — Product Inside Viral Director</h1><p>Viral Director + Product Upload · Concept · Script 8s · 3 Flow Prompts · Flow Assisted</p><span class="badge">📁 {project_name}</span><span class="badge">⚙️ Flow settings</span><span class="badge">💳 credit estimate</span><span class="badge">📱 giống Google Flow mobile</span></div>''',unsafe_allow_html=True)
 SIMPLE_TABS=['🎯 Viral Director','🌊 Flow Assisted','🏠 Project','📊 Dashboard']; ADVANCED_TABS=SIMPLE_TABS+['🖼️ Thumbnail Lab','🧾 Logs','🚀 Deploy']; names=SIMPLE_TABS if ui_mode=='Simple' else ADVANCED_TABS; tabs=st.tabs(names)
 def tab(name): return tabs[names.index(name)]
 def has_tab(name): return name in names
@@ -51,6 +51,112 @@ with tab('🎯 Viral Director'):
         topic=st.text_area('Chủ đề/kênh/ngách muốn làm video',height=120,value='AI/marketing/kinh doanh cho Shorts/Reels'); platform=st.selectbox('Nền tảng',['TikTok/Reels 9:16','YouTube Shorts 9:16','YouTube ngang 16:9','Facebook Reels']); niche=st.selectbox('Ngách viral',list(NICHES.keys())); faceless=st.checkbox('Ưu tiên faceless',value=True)
     with c2:
         host=st.text_area('AI host cố định nếu cần',value='Nam 28 tuổi, smart casual, background studio hiện đại, tone xanh đen, nói nhanh – rõ – chuyên gia.',height=90); minutes=st.selectbox('Độ dài blueprint',[3,4,5],index=0); st.info('Có chấm điểm Viral Potential, Hook, Retention, Faceless Ease, Difficulty.')
+
+    st.divider()
+    st.markdown('### 🛍️ Upload ảnh sản phẩm ngay trong Viral Director')
+    st.caption('Tạo concept + kịch bản 8s + 3 prompt Flow/Veo từ ảnh sản phẩm, rồi gửi sang Flow Assisted để copy prompt và build final.')
+
+    pc1, pc2 = st.columns([1.05, .95])
+    with pc1:
+        viral_product_upload = st.file_uploader('Upload ảnh sản phẩm gốc', type=['png','jpg','jpeg','webp'], key='viral_product_upload')
+        viral_product_name = st.text_input('Tên sản phẩm', value='sản phẩm trong ảnh gốc', key='viral_product_name')
+        viral_product_type = st.selectbox('Loại sản phẩm', PRODUCT_TYPES, key='viral_product_type')
+        viral_product_target = st.text_area('Khách hàng mục tiêu', value='người xem mạng xã hội thích sản phẩm đẹp, chân thực, dễ dùng và đáng tin', height=80, key='viral_product_target')
+    with pc2:
+        viral_product_mood = st.selectbox('Mood nhạc / cảm xúc', list(PRODUCT_MOODS.keys()), index=0, key='viral_product_mood')
+        viral_product_objective = st.text_area('Mục tiêu video sản phẩm', value='Hiệu suất cao, giữ chân người xem, tăng thời gian xem, tăng tương tác và khiến người xem muốn thử sản phẩm.', height=80, key='viral_product_objective')
+        viral_product_model = st.checkbox('Có người mẫu sử dụng sản phẩm', value=True, key='viral_product_model')
+        viral_product_clean_text = st.checkbox('Xoá sạch chữ trên sản phẩm / cấm text overlay', value=True, key='viral_product_clean_text')
+
+    viral_product_image_path = None
+    if viral_product_upload:
+        product_ref_dir = pdir / 'product_refs'
+        product_ref_dir.mkdir(parents=True, exist_ok=True)
+        safe_product_file = re.sub(r'[^a-zA-Z0-9_.-]+', '_', viral_product_upload.name)
+        viral_product_image_path = product_ref_dir / safe_product_file
+        viral_product_upload.seek(0)
+        viral_product_image_path.write_bytes(viral_product_upload.read())
+        viral_product_upload.seek(0)
+        st.image(str(viral_product_image_path), caption='Ảnh sản phẩm gốc dùng làm reference trong Google Flow Ingredients', use_container_width=True)
+
+    st.info('Prompt sẽ khóa sản phẩm theo ảnh gốc, giữ nguyên hình dáng/màu/chất liệu, cấm tự vẽ lại, cấm chữ overlay, cấm chữ môi trường, và yêu cầu xoá chữ trên sản phẩm để giảm lỗi Flow.')
+
+    cp1, cp2 = st.columns([1, 1])
+    with cp1:
+        make_product_prompts = st.button('🛍️ Tạo Concept + Kịch bản 8s + 3 Prompt Flow', type='primary', use_container_width=True)
+    with cp2:
+        st.markdown(
+            f"""
+<div class="card">
+<b>Music mood:</b><br>{PRODUCT_MOODS[viral_product_mood]['music']}<br><br>
+<b>Camera:</b><br>{PRODUCT_MOODS[viral_product_mood]['camera']}<br><br>
+<b>Voice:</b><br>{PRODUCT_MOODS[viral_product_mood]['voice_style']}
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    if make_product_prompts:
+        if not viral_product_upload:
+            st.error('Hãy upload ảnh sản phẩm gốc trước.')
+        else:
+            pdata = build_product_prompts(
+                viral_product_name,
+                viral_product_type,
+                viral_product_mood,
+                viral_product_target,
+                viral_product_objective,
+                viral_product_model,
+                viral_product_clean_text,
+                3,
+            )
+            pdata['viral_context'] = {'topic': topic, 'platform': platform, 'niche': niche, 'faceless': faceless, 'host': host}
+            if viral_product_image_path:
+                pdata['product_reference_image'] = str(viral_product_image_path)
+            st.session_state.viral_product_prompt_data = pdata
+            z = export_product_prompt_package(pdir, pdata, str(viral_product_image_path) if viral_product_image_path else None)
+            st.success('Đã tạo Product Concept + Kịch bản 8s + 3 Prompt Flow.')
+            st.download_button('📦 Tải Product Prompt Package ZIP', Path(z).read_bytes(), Path(z).name, use_container_width=True)
+
+    vpdata = st.session_state.get('viral_product_prompt_data')
+    if vpdata:
+        st.markdown('#### ✅ Product Concept')
+        with st.expander('Xem concept chiến lược sản phẩm', expanded=False):
+            st.json(vpdata['concept'])
+
+        st.markdown('#### 🎬 Shot list 8s')
+        st.dataframe(vpdata['shots'], use_container_width=True)
+
+        st.markdown('#### 🧾 3 Prompt Flow/Veo từ ảnh sản phẩm')
+        for pr in vpdata['prompts']:
+            with st.expander(f"Prompt {pr['variant']} · {pr['mood']} · Voiceover", expanded=pr['variant'] == 1):
+                st.markdown('**Voiceover tiếng Việt:**')
+                st.write(pr['voiceover'])
+                st.markdown('**Prompt Flow/Veo:**')
+                st.text_area('Prompt', value=pr['prompt'], height=320, key=f"viral_product_prompt_{pr['variant']}")
+                st.code(pr['prompt'])
+                st.json(pr['estimated_flow_setting'])
+
+        send1, sendall, downloadall = st.columns(3)
+        with send1:
+            if st.button('➡️ Gửi prompt 1 sang Flow Assisted', use_container_width=True, key='send_vproduct_1_fixed'):
+                p0 = vpdata['prompts'][0]
+                st.session_state.flow_rows = [{'scene': 1, 'status': 'Chưa làm', 'narration': p0['voiceover'], 'prompt': p0['prompt'], 'note': 'Viral Director Product Upload'}]
+                st.success('Đã gửi prompt 1 sang Flow Assisted.')
+        with sendall:
+            if st.button('➡️ Gửi cả 3 prompt sang Flow Assisted', use_container_width=True, key='send_vproduct_all_fixed'):
+                st.session_state.flow_rows = [
+                    {'scene': p['variant'], 'status': 'Chưa làm', 'narration': p['voiceover'], 'prompt': p['prompt'], 'note': 'Viral Director Product Upload'}
+                    for p in vpdata['prompts']
+                ]
+                st.success('Đã gửi cả 3 prompt sang Flow Assisted.')
+        with downloadall:
+            all_prompts = '\n\n====================\n\n'.join([p['prompt'] for p in vpdata['prompts']])
+            st.download_button('⬇️ Tải 3 prompt TXT', all_prompts.encode('utf-8'), 'viral_product_flow_prompts.txt', use_container_width=True)
+
+    st.divider()
+
+
     if st.button('🚀 Tạo Viral Blueprint',type='primary',use_container_width=True):
         bp=make_blueprint(topic,platform,niche,faceless,host,minutes); st.session_state.viral_blueprint=bp; z=export_blueprint_zip(pdir,bp); st.success('Đã tạo Viral Blueprint.'); st.download_button('📦 Tải Viral Blueprint ZIP',Path(z).read_bytes(),Path(z).name,use_container_width=True)
     bp=st.session_state.get('viral_blueprint')
@@ -127,4 +233,4 @@ if has_tab('🧾 Logs'):
 if has_tab('🚀 Deploy'):
     with tab('🚀 Deploy'):
         st.markdown('## 🚀 Deploy checklist'); st.json({'app.py':Path('app.py').exists(),'requirements.txt':Path('requirements.txt').exists(),'packages.txt':Path('packages.txt').exists(),'.streamlit/config.toml':Path('.streamlit/config.toml').exists(),'.gitignore':Path('.gitignore').exists()}); st.code('git init\ngit add .\ngit commit -m "AUTO VEO Studio v2.1"\ngit branch -M main\ngit remote add origin https://github.com/YOUR_USERNAME/auto-veo-studio.git\ngit push -u origin main',language='bash')
-st.caption('v2.1 Flow Quick Controls: thêm setting giống Google Flow mobile để copy prompt và chọn model/tỉ lệ/thời lượng/credit nhanh hơn.')
+st.caption('v2.4 Product Inside Viral Director: thêm setting giống Google Flow mobile để copy prompt và chọn model/tỉ lệ/thời lượng/credit nhanh hơn.')

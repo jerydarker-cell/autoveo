@@ -1,4 +1,4 @@
-# AUTO VEO Studio v2.3 — Flow Quick Controls
+# AUTO VEO Studio v2.4 — Flow Quick Controls
 
 Bản v2.1 tập trung vào workflow Flow trên điện thoại giống ảnh bạn gửi.
 
@@ -98,3 +98,36 @@ Viral Director
 ```
 
 Product Prompt Studio vẫn còn như tab riêng để dùng độc lập, nhưng luồng chính giờ nằm trong Viral Director.
+
+
+## v2.4 — Product Inside Viral Director
+
+Bản này sửa đúng lỗi: Product Upload đã nằm ngay trong tab **Viral Director**.
+
+Có trong Viral Director:
+
+- Upload ảnh sản phẩm gốc
+- Tên sản phẩm
+- Loại sản phẩm
+- Khách hàng mục tiêu
+- Mood nhạc/cảm xúc
+- Mục tiêu video sản phẩm
+- Có người mẫu sử dụng sản phẩm
+- Xoá sạch chữ trên sản phẩm / cấm text overlay
+- Tạo concept chiến lược sản phẩm
+- Tạo shot list 8s
+- Xuất 3 prompt Flow/Veo
+- Gửi prompt 1 hoặc cả 3 prompt sang Flow Assisted
+
+Luồng:
+
+```text
+Viral Director
+→ Upload ảnh sản phẩm
+→ Tạo Concept + Kịch bản 8s + 3 Prompt Flow
+→ Gửi sang Flow Assisted
+→ Copy prompt sang Google Flow
+→ Render bằng credit Flow/Veo
+→ Upload clip về app
+→ Build Final
+```
