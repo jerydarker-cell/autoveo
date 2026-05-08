@@ -1,4 +1,4 @@
-# AUTO VEO Studio v2.5 — Flow Quick Controls
+# AUTO VEO Studio v3.2 — Flow Quick Controls
 
 Bản v2.1 tập trung vào workflow Flow trên điện thoại giống ảnh bạn gửi.
 
@@ -151,3 +151,177 @@ Bản v2.5 đã thêm:
 - kiểm tra compile lại toàn bộ app và modules
 
 Luồng Product Upload trong Viral Director giữ nguyên.
+
+
+## v2.6 — Thumbnail Flow Panel
+
+Nâng cấp tab **Thumbnail Lab** giống panel Google Flow Image:
+
+- Image / Video
+- Text / Reference image
+- 16:9 / 4:3 / 1:1 / 3:4 / 9:16
+- 1x / 2x / 3x / 4x
+- Nano Banana Pro
+- Nano Banana 2
+- Imagen 4
+- Imagen 4 Ultra
+- Ước tính credit
+- Tạo prompt thumbnail cho Flow Image
+- Tải `thumbnail_flow_settings.json`
+- Vẫn tạo được thumbnail local bằng template có sẵn
+
+Mục tiêu: chuẩn bị nhanh prompt + setting cho thumbnail trong Google Flow.
+
+
+## v2.7 — Style Presets
+
+Thêm **Phong cách tạo ảnh** trong tab **Thumbnail Lab**.
+
+Style mới:
+
+- Cyberpunk
+- Realistic Commercial
+- Luxury Premium
+- Minimal Clean
+- Cute Pastel
+- Futuristic Tech
+- Cinematic Dark
+- Street Hype
+
+Ngoài ra, local thumbnail templates cũng được thêm:
+
+- cyberpunk neon
+- futuristic blue
+- luxury gold
+- minimal clean
+- cute pastel
+
+Prompt thumbnail cho Google Flow giờ sẽ bám theo style preset đã chọn.
+
+
+## v2.8 — Global Style Sync
+
+Đã đồng bộ style toàn app.
+
+### Mới trong sidebar
+- `Global style preset`
+
+### Áp dụng cho
+- Product Upload trong Viral Director
+- Flow Assisted / Flow Quick Settings
+- Thumbnail Lab
+
+### Các style
+- Cyberpunk
+- Realistic Commercial
+- Luxury Premium
+- Minimal Clean
+- Cute Pastel
+- Futuristic Tech
+- Cinematic Dark
+- Street Hype
+
+### Kết quả
+- Prompt sản phẩm tự bám theo style đã chọn
+- Flow settings suffix tự kèm style preset
+- Thumbnail prompt tự kèm style preset
+
+
+## v2.9 — Style Lock + Preview Cards
+
+Thêm nâng cấp style rất đáng làm:
+- Style preview card trực quan
+- Mỗi style có preview mini và palette màu mẫu
+- Preset màu theo style
+- Lock style cho toàn bộ project
+- Lưu style vào `project_style.json`
+
+Áp dụng cho:
+- Viral Director
+- Product Upload
+- Flow Assisted
+- Thumbnail Lab
+- Project tab
+
+
+## v3.0 — Style Gallery + UI Theme Sync
+
+Đã thêm:
+- style gallery đẹp hơn
+- preset ảnh mẫu cho từng style
+- nút apply style 1 chạm
+- style consistency score
+- project theme full UI đồng bộ theo style
+
+Điểm nổi bật:
+- tab **Style Gallery** mới
+- ảnh mẫu preset được tạo tự động trong thư mục `style_samples/`
+- có nút **Apply** và **Apply + Lock** cho từng style
+- có `style consistency score` để kiểm tra độ đồng bộ giữa Project / Flow / Product / Thumbnail
+- giao diện app tự đổi theme theo style đang chọn
+
+
+## v3.1 — Style Reference + Memory Blend
+
+Đã thêm:
+
+- style reference upload riêng cho từng project
+- AI tự gợi ý style phù hợp theo sản phẩm
+- auto map style → prompt wording
+- style blend 2 phong cách
+- style memory cho từng project / video series
+
+### Điểm mới chính
+
+**1. Style reference upload**
+- Upload nhiều ảnh style reference vào project
+- Lưu trong thư mục `style_references/`
+- Prompt có thể tự chèn phần mô tả sử dụng style references như nguồn cảm hứng visual
+
+**2. AI gợi ý style theo sản phẩm**
+- Dựa vào tên sản phẩm, loại sản phẩm, mood và target
+- Gợi ý cặp style ví dụ:
+  - Cyberpunk + Futuristic Tech
+  - Luxury Premium + Minimal Clean
+  - Street Hype + Luxury Premium
+
+**3. Auto map style → prompt wording**
+- Tự chèn style wording, palette wording và reference summary vào:
+  - Product Prompt
+  - Flow Assisted suffix
+  - Thumbnail Lab prompt
+
+**4. Style blend 2 phong cách**
+- Có `Global style preset` + `Secondary blend style`
+- Áp dụng blend cho toàn app
+
+**5. Style memory**
+- Lưu style theo `series / campaign`
+- Ghi nhớ primary style, secondary style, notes, lock state, reference files
+- Lưu trong `style_memory.json`
+
+
+## v3.2 — Smart Style AI + 3-Way Blend
+
+Đã thêm:
+
+- AI đọc ảnh style reference theo cách local heuristic để gợi ý style chính xác hơn
+- Blend 3 phong cách: primary + secondary + third style
+- Style ranking theo sản phẩm
+- Nút Apply suggestion 1 chạm
+- Tự sinh prompt mẫu theo từng series
+
+### Style reference vision
+App phân tích ảnh reference đã upload bằng các tín hiệu:
+- brightness
+- saturation
+- dark / clean / pastel / neon / luxury hints
+
+### Style ranking
+Trong Viral Director, khi bấm **AI gợi ý style theo sản phẩm**, app hiển thị bảng ranking style với điểm và lý do.
+
+### Apply suggestion 1 chạm
+Nút **Apply suggestion 1 chạm** lưu ngay combo style gợi ý vào project.
+
+### Series prompt pack
+Sidebar có nút sinh `series_prompt_pack.json` theo style hiện tại và series/campaign đang chọn.
